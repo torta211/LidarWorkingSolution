@@ -79,7 +79,7 @@ public:
 	~VelodyneVLP16PCAP();
 
 	// Open live stream
-	const bool open_live();
+	const bool open_live(int channel);
 
 	// Open the file
 	const bool open(const std::string& filename);
@@ -92,6 +92,8 @@ public:
 
 	// Close Capture
 	void close();
+
+	std::vector<std::vector<float>> read_frame();
 
 	// Retrieve Captured Data
 	void retrieve(std::vector<DataPoint>& lasers);

@@ -1,65 +1,75 @@
+#include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include <Python.h>
 #include <cmath>
 #include "DataHandler.h"
 #include <iostream>
 #include <Windows.h>
 
-PyObject* get_a_frame()
+std::vector<std::vector<float>> get_a_frame()
 {
 	VelodyneVLP16PCAP capture;
-	capture.open_live();
+	capture.open_live(2);
 
 	std::vector<DataPoint> dataPoints;
+	int frame_counter = 0;
+
 	while (capture.isRun())
 	{
 		capture.retrieve(dataPoints);
-		if (dataPoints.empty())
+
+		if (dataPoints.empty() || dataPoints.size() == 0)
 		{
 			continue;
 		}
 		else
 		{
-			break;
+			if (frame_counter == 0)
+			{
+				frame_counter += 1;
+				dataPoints.clear();
+				std::cout << "first frame thrown away" << std::endl;
+				continue;
+			}
+			else
+			{
+				break;
+			}
 		}
-
 	}
+	std::cout << "(C++) number of points in this frame: " << dataPoints.size() << std::endl;
 
-	std::cout << "frame read in c++ vector form" << std::endl;
-	std::cout << "number of points in this frame: " << dataPoints.size() << std::endl;
-
-	PyObject* frame_as_list = PyList_New(0);
+	std::vector<std::vector<float>> frame_as_2D_vector = std::vector<std::vector<float>>();
 
 	for (const DataPoint& laser : dataPoints)
 	{
-		PyObject* one_point = PyList_New(0);
-		PyList_Append(one_point, PyFloat_FromDouble(laser.coordinates.x));
-		PyList_Append(one_point, PyFloat_FromDouble(laser.coordinates.y));
-		PyList_Append(one_point, PyFloat_FromDouble(laser.coordinates.z));
+		std::vector<float> xyz = std::vector<float>();
+		xyz.push_back(laser.coordinates.x);
+		xyz.push_back(laser.coordinates.y);
+		xyz.push_back(laser.coordinates.z);
 
-		PyList_Append(frame_as_list, one_point);
+		frame_as_2D_vector.push_back(xyz);
 	}
 
-	std::cout << "passing frame to python code" << std::endl;
-	return frame_as_list;
+	return frame_as_2D_vector;
 }
 
-static PyMethodDef lidarhandler_methods[] = {
-	// The first property is the name exposed to Python, fast_tanh, the second is the C++
-	// function name that contains the implementation.
-    { "get_frame", (PyCFunction)get_a_frame, METH_O, nullptr },
+namespace py = pybind11;
 
-	// Terminate the array with an object containing nulls.
-	{ nullptr, nullptr, 0, nullptr }
-};
+PYBIND11_MODULE(Ccode, m) {
 
-static PyModuleDef lidarhandler_module = {
-	PyModuleDef_HEAD_INIT,
-	"C_mod",                        // Module name to use with Python import statements
-	"Provides some functions, but faster",  // Module description
-	0,
-	lidarhandler_methods                  // Structure that defines the methods of the module
-};
+	py::class_<VelodyneVLP16PCAP>(m, "VeloParser")
+		.def(py::init<>())
+		.def("open_live", &VelodyneVLP16PCAP::open_live)
+		.def("read_frame", &VelodyneVLP16PCAP::read_frame);
 
-PyMODINIT_FUNC PyInit_Ccode() {
-	return PyModule_Create(&lidarhandler_module);
+	m.def("get_frame", &get_a_frame, R"pbdoc(
+        Compute a hyperbolic tangent of a single argument expressed in radians.
+    )pbdoc");
+
+#ifdef VERSION_INFO
+	m.attr("__version__") = VERSION_INFO;
+#else
+	m.attr("__version__") = "dev";
+#endif
 }

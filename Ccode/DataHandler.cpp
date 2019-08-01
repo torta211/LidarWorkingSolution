@@ -13,11 +13,10 @@ VelodyneVLP16PCAP::~VelodyneVLP16PCAP()
 	close();
 }
 
-const bool VelodyneVLP16PCAP::open_live()
+const bool VelodyneVLP16PCAP::open_live(int channel)
 {
 	pcap_if_t* alldevs;
 	pcap_if_t* d;
-	int inum;
 	int i = 0;
 	pcap_t* adhandle;
 	char errbuf[PCAP_ERRBUF_SIZE];
@@ -45,10 +44,9 @@ const bool VelodyneVLP16PCAP::open_live()
 		return -1;
 	}
 
-	printf("Enter the interface number (1-%d):", i);
-	scanf_s("%d", &inum);
+	printf("Selecting interface: %i\n", channel);
 
-	if (inum < 1 || inum > i)
+	if (channel < 1 || channel > i)
 	{
 		printf("\nInterface number out of range.\n");
 		/* Free the device list */
@@ -57,7 +55,7 @@ const bool VelodyneVLP16PCAP::open_live()
 	}
 
 	/* Jump to the selected adapter */
-	for (d = alldevs, i = 0; i < inum - 1; d = d->next, i++);
+	for (d = alldevs, i = 0; i < channel - 1; d = d->next, i++);
 
 	/* Open the device */
 	/* Open the adapter */
@@ -178,6 +176,32 @@ void VelodyneVLP16PCAP::close()
 };
 
 // Retrieve Captured Data
+std::vector<std::vector<float>> VelodyneVLP16PCAP::read_frame()
+{
+
+	std::vector<DataPoint> dataPoints;
+	while (this->isRun())
+	{
+		this->retrieve(dataPoints);
+
+		if (dataPoints.empty() || dataPoints.size() == 0) { continue; }
+		else { break; }
+	}
+	std::vector<std::vector<float>> frame_as_2D_vector = std::vector<std::vector<float>>();
+
+	for (const DataPoint& laser : dataPoints)
+	{
+		std::vector<float> xyz = std::vector<float>();
+		xyz.push_back(laser.coordinates.x);
+		xyz.push_back(laser.coordinates.y);
+		xyz.push_back(laser.coordinates.z);
+
+		frame_as_2D_vector.push_back(xyz);
+	}
+	std::cout << "called read_frame() vector size: " << frame_as_2D_vector.size() << std::endl;
+	return frame_as_2D_vector;
+}
+
 void VelodyneVLP16PCAP::retrieve(std::vector<DataPoint>& lasers)
 {
 	// Pop One Rotation Data from Queue
@@ -261,6 +285,10 @@ void VelodyneVLP16PCAP::parseDataPacket(const DataPacket* packet, std::vector<Da
 			if (last_azimuth > azimuth) {
 				// Push One Rotation Data to Queue
 				mutex.lock();
+				if (queue.size() >= 1)
+				{
+					std::queue<std::vector<DataPoint>>().swap(queue);
+				}
 				queue.push(std::move(lasers));
 				mutex.unlock();
 				lasers.clear();
@@ -275,7 +303,7 @@ void VelodyneVLP16PCAP::parseDataPacket(const DataPacket* packet, std::vector<Da
 			laser.id = static_cast<unsigned char>(laser_index % MAX_NUM_LASERS);
 			laser.time = unixtime + static_cast<long long>(laser_relative_time);
 
-			//calculate coordinates
+			//calculate coordinates			
 			laser.coordinates.x = static_cast<float>((laser.distance / 100.0f) *
 				std::cos(laser.vertical * M_PI / 180.0f) * std::cos(laser.azimuth * M_PI / 180.0f));
 			laser.coordinates.y = static_cast<float>(((laser.distance / 100.0f) *
@@ -290,4 +318,5 @@ void VelodyneVLP16PCAP::parseDataPacket(const DataPacket* packet, std::vector<Da
 		}
 	}
 }
+
 
