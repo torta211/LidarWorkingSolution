@@ -176,42 +176,34 @@ void VelodyneVLP16PCAP::close()
 };
 
 // Retrieve Captured Data
-std::vector<std::vector<float>> VelodyneVLP16PCAP::read_frame()
+pybind11::handle VelodyneVLP16PCAP::retrieve()
 {
-
+	// Pop One Rotation Data from Queue
 	std::vector<DataPoint> dataPoints;
-	while (this->isRun())
-	{
-		this->retrieve(dataPoints);
 
-		if (dataPoints.empty() || dataPoints.size() == 0) { continue; }
-		else { break; }
-	}
-	std::vector<std::vector<float>> frame_as_2D_vector = std::vector<std::vector<float>>();
+	while (queue.empty() || !mutex.try_lock()) {}
+
+	dataPoints = std::move(queue.front());
+	cout << "retrieved size: " << dataPoints.size() << endl;
+	queue.pop();
+
+	mutex.unlock();
+
+	PyObject* frame_as_pylist = PyList_New(0);
 
 	for (const DataPoint& laser : dataPoints)
 	{
-		std::vector<float> xyz = std::vector<float>();
-		xyz.push_back(laser.coordinates.x);
-		xyz.push_back(laser.coordinates.y);
-		xyz.push_back(laser.coordinates.z);
+		PyObject* one_point = PyList_New(0);
+		PyList_Append(one_point, PyFloat_FromDouble(laser.coordinates.x));
+		PyList_Append(one_point, PyFloat_FromDouble(laser.coordinates.y));
+		PyList_Append(one_point, PyFloat_FromDouble(laser.coordinates.z));
+		PyList_Append(one_point, PyFloat_FromDouble(laser.distance));
+		PyList_Append(one_point, PyFloat_FromDouble(laser.id));
 
-		frame_as_2D_vector.push_back(xyz);
+		PyList_Append(frame_as_pylist, one_point);
 	}
-	std::cout << "called read_frame() vector size: " << frame_as_2D_vector.size() << std::endl;
-	return frame_as_2D_vector;
-}
-
-void VelodyneVLP16PCAP::retrieve(std::vector<DataPoint>& lasers)
-{
-	// Pop One Rotation Data from Queue
-	if (mutex.try_lock()) {
-		if (!queue.empty()) {
-			lasers = std::move(queue.front());
-			queue.pop();
-		}
-		mutex.unlock();
-	}
+	pybind11::handle ret = frame_as_pylist;
+	return ret;
 }
 
 void VelodyneVLP16PCAP::readPCAP()
@@ -285,9 +277,9 @@ void VelodyneVLP16PCAP::parseDataPacket(const DataPacket* packet, std::vector<Da
 			if (last_azimuth > azimuth) {
 				// Push One Rotation Data to Queue
 				mutex.lock();
-				if (queue.size() >= 1)
+				if (!queue.empty())
 				{
-					std::queue<std::vector<DataPoint>>().swap(queue);
+					queue.pop();
 				}
 				queue.push(std::move(lasers));
 				mutex.unlock();

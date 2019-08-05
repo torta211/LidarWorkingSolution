@@ -9,7 +9,7 @@
 #include <iomanip>
 #include <sstream>
 #include <iostream>
-
+#include <pybind11/pybind11.h>
 #include "DataPoint.h"
 
 
@@ -93,10 +93,8 @@ public:
 	// Close Capture
 	void close();
 
-	std::vector<std::vector<float>> read_frame();
-
 	// Retrieve Captured Data
-	void retrieve(std::vector<DataPoint>& lasers);
+	pybind11::handle retrieve();
 
 private:
 	void readPCAP();
